@@ -22,40 +22,33 @@
 # Load libraries
 library(dplyr)
 library(tidyr)
+library(ggplot2)
 
 # Load the data files (if they exist) and process the data
 dataLocation <- "./data/exdata-data-NEI_data/"
 PM2_5DataFileName <- "summarySCC_PM25.rds"
-SCCFileName <- "Source_Classification_Code.rds"
 
-if (!(PM2_5DataFileName %in% dir(dataLocation) & SCCFileName %in% dir(dataLocation))) {
+if (!(PM2_5DataFileName %in% dir(dataLocation))) {
         stop("Data file does not exist!")
 }
 
 PM2_5Data <- readRDS(paste0(dataLocation, PM2_5DataFileName))
-SCCData <- readRDS(paste0(dataLocation, SCCFileName))
-
-# Subset Source Classification Codes to those that include on-road vehicles
-SCCData <- subset(SCCData, grepl("^[H|h]ighway Vehicles", SCC.Level.Two))
 
 # Subset pollution data to only the on-road vehicle sources
-PM2_5Data <- subset(PM2_5Data, SCC %in% SCCData$SCC)
+PM2_5Data <- subset(PM2_5Data, type == "ON-ROAD")
 
 # Include only Baltimore City (fips == "24510") and Los Angeles (fips == "06037")
 PM2_5Data <- subset(PM2_5Data, fips == "24510" | fips == "06037")
 
-# Include only 1999 and 2008
-PM2_5Data <- subset(PM2_5Data, year == 1999 | year == 2008)
-
 # Calculate the mean emissions across years and regions
 PM2_5Means <- with(PM2_5Data, tapply(Emissions, list(fips, year), mean, na.rm = TRUE))
 PM2_5Means <- as.data.frame(PM2_5Means, row.names = c("Los Angeles", "Baltimore"))
+PM2_5Means$location <- rownames(PM2_5Means)
 
-# Calculate the change in emissions relative to 1999
-PM2_5Means <- mutate(PM2_5Means,
-                     c1999 = ((PM2_5Means$`1999` - PM2_5Means$`1999`) / PM2_5Means$`1999`) + 1)
-PM2_5Means <- mutate(PM2_5Means,
-                     c2008 = ((PM2_5Means$`2008` - PM2_5Means$`1999`) / PM2_5Means$`1999`) + 1)
+# Calculate the change in emissions across years relative to 1999
+PM2_5Means <- arrange(gather(PM2_5Means, year, emissions, -location), year)
+PM2_5Means <- group_by(PM2_5Means, location)
+PM2_5Means <- mutate(PM2_5Means, change = ((emissions - emissions[1]) / emissions[1]) +1)
 
 # Create a plot with means to compare data between 1999 and 2008
 if (!file.exists("output")){
@@ -65,12 +58,15 @@ if (!file.exists("output")){
 # Store the graph as a '.png' file
 png(filename = "./output/plot6.png")
 
-with(PM2_5Means, plot(rep(1999, 2), c1999, xlim = c(1998, 2009), ylim = c(0, 4), col = c(2, 3),
-                      main = "Relative Change in Vehicle Emissions from 1999 to 2008",
-                      xlab = "Year", ylab = "Emissions Relative to 1999"))
-with(PM2_5Means, points(rep(2008, 2), c2008, col = c(2, 3)))
-with(PM2_5Means, segments(rep(1999, 2), c1999, rep(2008, 2), c2008,
-                          col = c(2, 3), lwd = 2, lty = 2))
-legend("topleft", legend = c("Los Angeles", "Baltimore City"),
-       col = c(2, 3), lwd = 2, lty = 2)
+plot6 <- ggplot(data = PM2_5Means) +
+    geom_point(aes(year, change, col = location, size = 2)) +
+    geom_segment(aes(x = year, y = change, xend = lag(year, 2), yend = lag(change, 2),
+                     col = location), na.rm = TRUE) +
+    labs(title = "Relative Vehicle Emissions Change for Baltimore and Los Angeles", x = "Year",
+         y = "Relative Vehicle Emissions Change",
+         subtitle = "Baseline Year is 1999", color = "Location") +
+    guides(col = "legend", size = "none")
+
+print(plot6)
+
 dev.off()

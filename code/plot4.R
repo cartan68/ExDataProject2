@@ -17,6 +17,9 @@
 ##
 ## ********************************************************
 
+# Load libraries
+library(tidyr)
+
 # Load the data files (if they exist) and process the data
 dataLocation <- "./data/exdata-data-NEI_data/"
 PM2_5DataFileName <- "summarySCC_PM25.rds"
@@ -35,28 +38,12 @@ SCCData <- subset(SCCData, grepl("[C|c]oal", SCC.Level.Three))
 # Subset pollution data to only the coal sources
 PM2_5Data <- subset(PM2_5Data, SCC %in% SCCData$SCC)
 
-# Separate the data by year
-PM2_5Data$SCC <- as.factor(PM2_5Data$SCC)
-PM2_5Data1999 <- subset(PM2_5Data, PM2_5Data$year == 1999)
-PM2_5Data2008 <- subset(PM2_5Data, PM2_5Data$year == 2008)
-
-# Calculate the mean across types of pollutant
-PM2_5Means1999 <- tapply(PM2_5Data1999$Emissions, PM2_5Data1999$SCC, mean, na.rm = TRUE)
-PM2_5Means1999 <- data.frame(SCC = names(PM2_5Means1999), mean = PM2_5Means1999, year = "1999")
-PM2_5Means1999 <- subset(PM2_5Means1999, !is.na(mean))
-PM2_5Means2008 <- tapply(PM2_5Data2008$Emissions, PM2_5Data2008$SCC, mean, na.rm = TRUE)
-PM2_5Means2008 <- data.frame(SCC = names(PM2_5Means2008), mean = PM2_5Means2008, year = "2008")
-PM2_5Means2008 <- subset(PM2_5Means2008, !is.na(mean))
-
-PM2_5Means <- rbind(PM2_5Means1999, PM2_5Means2008)
-PM2_5Means$year <- as.factor(PM2_5Means$year)
-
-boxplot(log10(mean) ~ year, PM2_5Means, main = "Comparison of Pollutants from Coal",
-        xlab = "Year", ylab = "log10(Mean Emissions)")
-abline(h = log10(mean(PM2_5Means[PM2_5Means$year == "1999", ]$mean)), col = 2, lwd = 2, lty = 2)
-abline(h = log10(mean(PM2_5Means[PM2_5Means$year == "2008", ]$mean)), col = 3, lwd = 2, lty = 2)
-legend("bottomleft", legend = c("1999 Mean Emissions", "2008 Mean Emissions"),
-       col = c(2, 3), lwd = 2, lty = 2)
+# Separate the data by year and SSC
+#PM2_5Data$SCC <- as.factor(PM2_5Data$SCC)
+PM2_5Means <- with(PM2_5Data, tapply(Emissions, list(SCC, year), mean))
+PM2_5Means <- as.data.frame(PM2_5Means)
+PM2_5Means$SCC <- rownames(PM2_5Means)
+PM2_5Means <- gather(PM2_5Means, year, emissions, -SCC)
 
 # Create a plot with means to compare data between 1999 and 2008
 if (!file.exists("output")){
@@ -66,11 +53,13 @@ if (!file.exists("output")){
 # Store the graph as a '.png' file
 png(filename = "./output/plot4.png")
 
-boxplot(log10(mean) ~ year, PM2_5Means, main = "Comparison of Pollutants from Coal",
-        xlab = "Year", ylab = "log10(Mean Emissions)")
-abline(h = log10(mean(PM2_5Means[PM2_5Means$year == "1999", ]$mean)), col = 2, lwd = 2, lty = 2)
-abline(h = log10(mean(PM2_5Means[PM2_5Means$year == "2008", ]$mean)), col = 3, lwd = 2, lty = 2)
-legend("bottomleft", legend = c("1999 Mean Emissions", "2008 Mean Emissions"),
+boxplot(log10(emissions) ~ year, PM2_5Means, main = "Comparison of Pollutants from Coal",
+        xlab = "Year", ylab = "log10(Emissions in Tons)")
+abline(h = log10(mean(PM2_5Means[PM2_5Means$year == "1999", ]$emissions, na.rm = TRUE)),
+       col = 2, lwd = 2, lty = 2)
+abline(h = log10(mean(PM2_5Means[PM2_5Means$year == "2008", ]$emissions, na.rm = TRUE)),
+       col = 3, lwd = 2, lty = 2)
+legend("topright", legend = c("1999 Mean Emissions", "2008 Mean Emissions"),
        col = c(2, 3), lwd = 2, lty = 2, cex = 0.65)
 
 dev.off()
